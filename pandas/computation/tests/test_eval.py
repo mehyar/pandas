@@ -7,8 +7,7 @@ from itertools import product
 import ast
 
 import nose
-from nose.tools import assert_raises, assert_tuple_equal
-from nose.tools import assert_true, assert_false, assert_equal
+from nose.tools import assert_raises, assert_true, assert_false, assert_equal
 
 from numpy.random import randn, rand
 import numpy as np
@@ -77,8 +76,7 @@ def skip_incompatible_operand(f):
     return wrapper
 
 
-_good_arith_ops = tuple(set(_arith_ops_syms) -
-                        set(_special_case_arith_ops_syms))
+_good_arith_ops = com.difference(_arith_ops_syms, _special_case_arith_ops_syms)
 
 class TestEvalPandas(unittest.TestCase):
 
@@ -160,6 +158,7 @@ class TestEvalPandas(unittest.TestCase):
         for lhs, rhs in product(self.lhses, self.rhses):
             self.check_floor_division(lhs, '//', rhs)
 
+    @slow
     def test_pow(self):
         for lhs, rhs in product(self.lhses, self.rhses):
             self.check_pow(lhs, '**', rhs)
@@ -391,11 +390,11 @@ class TestAlignment(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.INDEX_TYPES = 'i', 'f', 's', 'u', 'dt', # 'p'
+        cls.index_types = 'i', 'f', 's', 'u', 'dt', # 'p'
 
     @classmethod
     def tearDownClass(cls):
-        del cls.INDEX_TYPES
+        del cls.index_types
 
     def check_align_nested_unary_op(self, engine):
         skip_numexpr_engine(engine)
@@ -408,15 +407,35 @@ class TestAlignment(unittest.TestCase):
         for engine in _engines:
             self.check_align_nested_unary_op(engine)
 
-    def check_basic_frame_alignment(self, engine):
-        df = mkdf(10, 10, data_gen_f=f)
-        df2 = mkdf(20, 10, data_gen_f=f)
+    def check_basic_frame_alignment(self, engine, r_idx_type, c_idx_type):
+        df = mkdf(10, 10, data_gen_f=f, r_idx_type=r_idx_type,
+                  c_idx_type=c_idx_type)
+        df2 = mkdf(20, 10, data_gen_f=f, r_idx_type=r_idx_type,
+                   c_idx_type=c_idx_type)
         res = pd.eval('df + df2', engine=engine)
         assert_frame_equal(res, df + df2)
 
+    @slow
     def test_basic_frame_alignment(self):
-        for engine in _engines:
-            self.check_basic_frame_alignment(engine)
+        args = product(_engines, self.index_types, self.index_types)
+        for engine, r, c in args:
+            self.check_basic_frame_alignment(engine, r, c)
+
+    def check_frame_comparison(self, engine, r_idx_type, c_idx_type):
+        df = mkdf(10, 10, data_gen_f=f, r_idx_type=r_idx_type,
+                  c_idx_type=c_idx_type)
+        res = pd.eval('df < 2', engine=engine)
+        assert_frame_equal(res, df < 2)
+
+        df3 = DataFrame(randn(*df.shape), index=df.index, columns=df.columns)
+        res = pd.eval('df < df3', engine=engine)
+        assert_frame_equal(res, df < df3)
+
+    @slow
+    def test_frame_comparison(self):
+        args = product(_engines, self.index_types, self.index_types)
+        for engine, r, c in args:
+            self.check_frame_comparison(engine, r, c)
 
     def check_medium_complex_frame_alignment(self, engine, r1, r2, c1, c2):
         skip_numexpr_engine(engine)
@@ -428,7 +447,7 @@ class TestAlignment(unittest.TestCase):
 
     @slow
     def test_medium_complex_frame_alignment(self):
-        args = product(_engines, *([self.INDEX_TYPES[:4]] * 4))
+        args = product(_engines, *([self.index_types] * 4))
         for engine, r1, r2, c1, c2 in args:
             self.check_medium_complex_frame_alignment(engine, r1, r2, c1, c2)
 
@@ -455,7 +474,7 @@ class TestAlignment(unittest.TestCase):
 
     @slow
     def test_basic_frame_series_alignment(self):
-        args = product(_engines, self.INDEX_TYPES, self.INDEX_TYPES,
+        args = product(_engines, self.index_types, self.index_types,
                        ('index', 'columns'))
         for engine, r_idx_type, c_idx_type, index_name in args:
             self.check_basic_frame_series_alignment(engine, r_idx_type,
@@ -484,7 +503,7 @@ class TestAlignment(unittest.TestCase):
 
     @slow
     def test_basic_series_frame_alignment(self):
-        args = product(_engines, self.INDEX_TYPES, self.INDEX_TYPES,
+        args = product(_engines, self.index_types, self.index_types,
                        ('index', 'columns'))
         for engine, r_idx_type, c_idx_type, index_name in args:
             self.check_basic_series_frame_alignment(engine, r_idx_type,
@@ -509,7 +528,7 @@ class TestAlignment(unittest.TestCase):
 
     @slow
     def test_series_frame_commutativity(self):
-        args = product(_engines, self.INDEX_TYPES, self.INDEX_TYPES, ('+',
+        args = product(_engines, self.index_types, self.index_types, ('+',
                                                                       '*'),
                        ('index', 'columns'))
         for engine, r_idx_type, c_idx_type, op, index_name in args:
@@ -519,27 +538,41 @@ class TestAlignment(unittest.TestCase):
     def check_complex_series_frame_alignment(self, engine, index_name, obj, r1,
                                              r2, c1, c2):
         skip_numexpr_engine(engine)
-        df = mkdf(10, 10, data_gen_f=f, r_idx_type=r1, c_idx_type=c1)
-        df2 = mkdf(20, 10, data_gen_f=f, r_idx_type=r2, c_idx_type=c2)
+        df = mkdf(10, 5, data_gen_f=f, r_idx_type=r1, c_idx_type=c1)
+        df2 = mkdf(20, 5, data_gen_f=f, r_idx_type=r2, c_idx_type=c2)
         index = getattr(locals()[obj], index_name)
         s = Series(np.random.randn(5), index[:5])
-        if engine != 'python':
-            expected = df2.add(s, axis=1).add(df)
+
+        if r2 == 'dt' or c2 == 'dt':
+            if engine == 'numexpr':
+                expected2 = df2.add(s)
+            else:
+                expected2 = df2 + s
         else:
-            expected = df2 + s + df
+            expected2 = df2 + s
+
+        if r1 == 'dt' or c1 == 'dt':
+            if engine == 'numexpr':
+                expected = expected2.add(df)
+            else:
+                expected = expected2 + df
+        else:
+            expected = expected2 + df
+
         res = pd.eval('df2 + s + df', engine=engine)
-        expected = df2 + s + df
-        assert_tuple_equal(res.shape, expected.shape)
+        self.assertEqual(res.shape, expected.shape)
         assert_frame_equal(res, expected)
 
     @slow
     def test_complex_series_frame_alignment(self):
+        index_types = [self.index_types] * 4
         args = product(_engines, ('index', 'columns'), ('df', 'df2'),
-                    *([self.INDEX_TYPES[:4]] * 4))
+                       *index_types)
         for engine, index_name, obj, r1, r2, c1, c2 in args:
             self.check_complex_series_frame_alignment(engine, index_name, obj,
                                                       r1, r2, c1, c2)
 
+    @slow
     def test_performance_warning_for_asenine_alignment(self):
         df = DataFrame(randn(1000, 10))
         s = Series(randn(10000))
