@@ -30,22 +30,22 @@ class Scope(StringMixin):
 
     def __init__(self, gbls=None, lcls=None, level=1, resolvers=None):
         self.level = level
-        self.resolvers = resolvers or []
+        self.resolvers = tuple(resolvers or [])
         self.globals = dict()
         self.locals = dict()
-        self.ntemps = 0
+        self.ntemps = 0  # number of temporary variables in this scope
 
         if isinstance(lcls, Scope):
             ld, lcls = lcls, dict()
-            self.locals.update(ld.locals)
-            self.globals.update(ld.globals)
-            self.resolvers.extend(ld.resolvers)
+            self.locals.update(ld.locals.copy())
+            self.globals.update(ld.globals.copy())
+            self.resolvers += ld.resolvers
             self.update(ld.level)
 
         frame = sys._getframe(level)
         try:
-            self.globals.update(gbls or frame.f_globals.copy())
-            self.locals.update(lcls or frame.f_locals.copy())
+            self.globals.update(gbls or frame.f_globals)
+            self.locals.update(lcls or frame.f_locals)
         finally:
             del frame
 
@@ -57,9 +57,11 @@ class Scope(StringMixin):
         self.globals['True'] = True
         self.globals['False'] = False
 
-        self.resolver_keys = set(reduce(operator.add, (list(o.keys()) for o in
-                                                       self.resolvers), []))
-        self._global_resolvers = self.resolvers + [self.locals, self.globals]
+        self.resolver_keys = frozenset(reduce(operator.add, (list(o.keys()) for
+                                                             o in
+                                                             self.resolvers),
+                                              []))
+        self._global_resolvers = self.resolvers + (self.locals, self.globals)
         self._resolver = None
 
     def __unicode__(self):
@@ -69,7 +71,7 @@ class Scope(StringMixin):
                                              self.resolver_keys))
 
     def __getitem__(self, key):
-        return self.locals.get(key,self.globals[key])
+        return self.resolver(key)
 
     @property
     def resolver(self):
