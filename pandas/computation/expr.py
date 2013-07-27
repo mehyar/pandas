@@ -25,6 +25,24 @@ def _ensure_scope(level=2, global_dict=None, local_dict=None, resolvers=None,
 
 
 class Scope(StringMixin):
+    """Object to hold scope, with a few bells to deal with some custom syntax
+    added by pandas.
+
+    Parameters
+    ----------
+    gbls : dict or None, optional, default None
+    lcls : dict or Scope or None, optional, default None
+    level : int, optional, default 1
+    resolvers : list-like or None, optional, default None
+
+    Attributes
+    ----------
+    globals : dict
+    locals : dict
+    level : int
+    resolvers : tuple
+    resolver_keys : frozenset
+    """
     __slots__ = ('globals', 'locals', 'resolvers', '_global_resolvers',
                  'resolver_keys', '_resolver', 'level')
 
@@ -87,9 +105,14 @@ class Scope(StringMixin):
         return self._resolver
 
     def update(self, level=None):
+        """Update the current scope by going back `level` levels.
 
+        Parameters
+        ----------
+        level : int or None, optional, default None
+        """
         # we are always 2 levels below the caller
-        # plus the caller maybe below the env level
+        # plus the caller may be below the env level
         # in which case we need addtl levels
         sl = 2
         if level is not None:
@@ -109,10 +132,23 @@ class Scope(StringMixin):
                 self.locals.update(f.f_locals)
                 self.globals.update(f.f_globals)
         finally:
-            del frame
-            del frames
+            del frame, frames
 
     def add_tmp(self, value, where='locals'):
+        """Add a temporary variable to the scope.
+
+        Parameters
+        ----------
+        value : object
+            An arbitrary object to be assigned to a temporary variable.
+        where : basestring, optional, default 'locals', {'locals', 'globals'}
+            What scope to add the value to.
+
+        Returns
+        -------
+        name : basestring
+            The name of the temporary variable created.
+        """
         d = getattr(self, where, None)
 
         if d is None:

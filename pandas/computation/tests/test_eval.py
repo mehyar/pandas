@@ -763,6 +763,40 @@ class TestOperations(unittest.TestCase):
                                                             'python')):
             self.check_assignment_fails(engine, parser)
 
+    def check_basic_period_index_boolean_expression(self, engine):
+        df = mkdf(2, 2, data_gen_f=f, c_idx_type='p', r_idx_type='i')
+
+        e = df < 2
+        r = pd.eval('df < 2', engine=engine)
+        x = df < 2
+
+        assert_frame_equal(r, e)
+        assert_frame_equal(x, e)
+
+    def test_basic_period_index_expression_python(self):
+        for engine in _engines:
+            self.check_basic_period_index_boolean_expression(engine)
+
+    def check_basic_period_index_subscript_expression(self, engine):
+        df = mkdf(2, 2, data_gen_f=f, c_idx_type='p', r_idx_type='i')
+        r = pd.eval('df[df < 2 + 3]', engine=engine)
+        e = df[df < 2 + 3]
+        assert_frame_equal(r, e)
+
+    def test_basic_period_index_subscript_expression(self):
+        for engine in _engines:
+            self.check_basic_period_index_subscript_expression(engine)
+
+    def check_nested_period_index_subscript_expression(self, engine):
+        df = mkdf(2, 2, data_gen_f=f, c_idx_type='p', r_idx_type='i')
+        r = pd.eval('df[df[df < 2] < 2] + df * 2', engine=engine)
+        e = df[df[df < 2] < 2] + df * 2
+        assert_frame_equal(r, e)
+
+    def test_nested_period_index_subscript_expression(self):
+        for engine in _engines:
+            self.check_nested_period_index_subscript_expression(engine)
+
 
 _var_s = randn(10)
 

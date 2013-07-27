@@ -30,6 +30,8 @@ from pandas import bdate_range
 from pandas.tseries.index import DatetimeIndex
 from pandas.tseries.period import PeriodIndex
 
+from pandas.io.common import urlopen
+
 Index = index.Index
 MultiIndex = index.MultiIndex
 Series = series.Series
